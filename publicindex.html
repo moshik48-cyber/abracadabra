@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Abracadabra – Voice → App Spec (Demo)</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0}
+    .wrap{max-width:900px;margin:40px auto;padding:0 16px}
+    .card{background:#0b1220;border:1px solid #1f2937;border-radius:16px;padding:20px;margin-top:16px}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    button{border:0;border-radius:12px;padding:10px 14px;background:#10b981;color:#081016;font-weight:700}
+    button.secondary{background:#111827;color:#e5e7eb;border:1px solid #374151}
+    textarea,input{width:100%;background:#0a1020;color:#e5e7eb;border:1px solid #334155;border-radius:12px;padding:12px}
+    pre{white-space:pre-wrap;background:#0a0f1c;padding:12px;border-radius:12px;border:1px solid #1f2937}
+    .badge{display:inline-block;background:#22d3ee;color:#05252b;border-radius:999px;padding:4px 10px;margin-left:8px;font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Speak your vision <span class="badge">demo</span></h1>
+    <p>תאר בקול/טקסט מה אתה צריך, ונייצר לך Spec ראשוני + Preview דמו.</p>
+
+    <div class="card">
+      <h3>Quick presets</h3>
+      <div class="row">
+        <button class="secondary" onclick="setPrompt(`Create a client & invoice tracker with clients, invoices, and payments. Show totals and status.`)">Client & Invoice Tracker</button>
+        <button class="secondary" onclick="setPrompt(`Make a to-do app with tasks, due dates, and a calendar view. Include filters.`)">To-Do with Calendar</button>
+        <button class="secondary" onclick="setPrompt(`Simple CRM for leads with pipeline stages, notes, and reminders.`)">Simple CRM for Leads</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Voice or text</h3>
+      <div class="row">
+        <textarea id="prompt" rows="4" placeholder="Describe your app…"></textarea>
+        <div class="row">
+          <button onclick="toSpec()">👉 To Spec</button>
+          <button class="secondary" onclick="toPreview()">Preview</button>
+          <button class="secondary" onclick="downloadJSON()">Download JSON</button>
+          <button class="secondary" id="micBtn" onclick="startVoice()">🎙️ Mic</button>
+        </div>
+        <small id="micNote"></small>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Spec</h3>
+      <pre id="specBox">—</pre>
+    </div>
+
+    <div class="card">
+      <h3>Preview (mocked)</h3>
+      <div id="previewBox"></div>
+    </div>
+  </div>
+
+<script>
+const FN = '/.netlify/functions/parse-spec';
+
+function setPrompt(txt){ document.getElementById('prompt').value = txt; }
+
+async function callFn(action){
+  const text = document.getElementById('prompt').value.trim();
+  const res = await fetch(FN, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ text, action })
+  });
+  if(!res.ok){ throw new Error('Function failed'); }
+  return res.json();
+}
+
+async function toSpec(){
+  try{
+    const data = await callFn('spec');
+    document.getElementById('specBox').textContent = JSON.stringify(data.spec, null, 2);
+  }catch(e){
+    document.getElementById('specBox').textContent = 'Error: ' + e.message;
+  }
+}
+
+async function toPreview(){
+  try{
+    const data = await callFn('preview');
+    document.getElementById('specBox').textContent = JSON.stringify(data.spec, null, 2);
+    renderPreview(data.preview);
+  }catch(e){
+    document.getElementById('previewBox').innerHTML = '<pre>Error: '+e.message+'</pre>';
+  }
+}
+
+function renderPreview(p){
+  const el = document.getElementById('previewBox');
+  const rows = (p.tableRows||[]).map(r =>
+    `<tr><td>${r.name}</td><td>${r.status||''}</td><td>${r.total||''}</td></tr>`).join('');
+  el.innerHTML = `
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr><th align="left">Name</th><th align="left">Status</th><th align="left">Total</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div style="margin-top:12px">
+      ${(p.chart||[]).map(c=>`<div>${c.label}: ${c.value}</div>`).join('')}
+    </div>`;
+}
+
+function downloadJSON(){
+  const txt = document.getElementById('specBox').textContent || '{}';
+  const blob = new Blob([txt], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'spec.json';
+  a.click();
+}
+
+function startVoice(){
+  const note = document.getElementById('micNote');
+  const micBtn = document.getElementById('micBtn');
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){
+    note.textContent = 'STT לא נתמך בדפדפן – מעבר אוטומטי להזנת טקסט ידנית';
+    micBtn.disabled = true;
+    return;
+  }
+  const rec = new SR();
+  rec.lang = 'en-US'; // ברירת מחדל אנגלית (כמו Wix), אפשר להחליף לעברית
+  rec.onresult = (e)=>{
+    const t = e.results[0][0].transcript;
+    document.getElementById('prompt').value = t;
+  };
+  rec.onerror = ()=>{ note.textContent = 'שגיאת מיקרופון'; };
+  rec.start();
+  note.textContent = 'מקשיב… דבר/י ואז נפסיק אוטומטית.';
+}
+</script>
+</body>
+</html>
