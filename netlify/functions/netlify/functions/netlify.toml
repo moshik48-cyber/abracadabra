@@ -1,0 +1,15 @@
+[build]
+  # אין תהליך build – פשוט פרסם את התיקייה הראשית
+  command = ""
+  publish = "."
+
+[functions]
+  # איפה שמרת את פונקציות נטפיליי (כבר יצרת earlier)
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# (אופציונלי) אם תרצה SPA ניווט נקי בעתיד
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
