@@ -1,7 +1,13 @@
+# netlify.toml (בשורש)
 [build]
   command = ""
   publish = "public"
 
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# לשימוש כ-SPA בעתיד (אופציונלי, לא מזיק)
 [[redirects]]
   from = "/*"
   to = "/index.html"
