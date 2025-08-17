@@ -1,13 +1,12 @@
 [build]
-  command = ""
-  publish = "public"
+command = ""          # אין תהליך build – סטטי
+publish = "public"    # כאן נמצא index.html
 
 [functions]
-  directory = "netlify/functions"
-  node_bundler = "esbuild"
+directory = "netlify/functions"
+node_bundler = "esbuild"
 
-# SPA fallback (לא חובה, אבל שימושי אם נרצה ראוטינג צד־לקוח)
 [[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+from = "/*"
+to = "/index.html"
+status = 200
