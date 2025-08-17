@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Abracadabra – Demo</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; 
+           background:#0b0d10; color:#e7eef7; }
+    .wrap { max-width: 860px; margin: 48px auto; padding: 0 16px; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    h1 { font-size: clamp(28px, 3.4vw, 40px); margin: 0; letter-spacing:.3px; }
+    .badge { background:linear-gradient(135deg,#28f0a3,#1eb5ff); color:#001014; padding:8px 12px; border-radius:12px; font-weight:700; }
+    .card { background:#12161c; border:1px solid #1e2630; border-radius:16px; padding:20px; margin-top:18px; }
+    button { background:#18a57b; border:none; color:#061015; padding:11px 16px; border-radius:12px; font-weight:700; cursor:pointer; }
+    button.secondary { background:#1c2633; color:#cfe7ff; border:1px solid #2b394a; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+    textarea, input { width:100%; background:#0b0f14; border:1px solid #243040; color:#e7eef7; border-radius:12px; padding:12px; font:inherit; }
+    .muted { color:#9eb3c7; font-size:14px; }
+    pre { background:#0b0f14; border:1px solid #243040; padding:12px; border-radius:12px; overflow:auto; }
+    .ok { color:#36e6a1; } .err { color:#ff6b6b; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Abracadabra <span class="badge">Demo</span></h1>
+      <div class="row">
+        <button id="toggleDir" class="secondary">RTL/LTR</button>
+        <a href="https://github.com" target="_blank" rel="noreferrer"><button class="secondary">GitHub</button></a>
+      </div>
+    </header>
+
+    <div class="card">
+      <p class="muted">Quick check: call the Netlify Function <code>parse-spec</code> with a sample transcript and show the response.</p>
+      <div class="row">
+        <textarea id="transcript" rows="4">Create a dashboard with KPI for total items and a table of items (name, status). Add a form to add a new item.</textarea>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="btnPreview">Call Function</button>
+        <button id="btnSpec" class="secondary">Download UI JSON (when available)</button>
+      </div>
+      <div id="status" class="muted" style="margin-top:10px"></div>
+      <pre id="out" hidden></pre>
+    </div>
+
+    <div class="card">
+      <h3 style="margin:0 0 8px 0;">Endpoints</h3>
+      <ul class="muted">
+        <li><code>/.netlify/functions/parse-spec</code> – POST { transcript }</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    const $ = (s)=>document.querySelector(s);
+    const statusEl = $("#status");
+    const outEl = $("#out");
+
+    $("#toggleDir").onclick = () => {
+      const isRTL = document.documentElement.getAttribute("dir")==="rtl";
+      document.documentElement.setAttribute("dir", isRTL ? "ltr" : "rtl");
+      document.documentElement.setAttribute("lang", isRTL ? "en" : "he");
+    };
+
+    $("#btnPreview").onclick = async () => {
+      statusEl.textContent = "Calling /.netlify/functions/parse-spec …";
+      outEl.hidden = true;
+      try {
+        const res = await fetch("/.netlify/functions/parse-spec", {
+          method: "POST",
+          headers: {"content-type":"application/json"},
+          body: JSON.stringify({ transcript: $("#transcript").value })
+        });
+        const data = await res.json();
+        if(!res.ok) throw new Error(data.error || res.statusText);
+        statusEl.innerHTML = '<span class="ok">✔ Success</span> — got spec/UI JSON';
+        outEl.textContent = JSON.stringify(data, null, 2);
+        outEl.hidden = false;
+
+        // Optional: enable "Download UI JSON" if server returned { ui }
+        if (data.ui) {
+          $("#btnSpec").onclick = () => {
+            const blob = new Blob([JSON.stringify(data.ui, null, 2)], {type:"application/json"});
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = "abracadabra-ui.json";
+            document.body.appendChild(a); a.click(); a.remove();
+            URL.revokeObjectURL(a.href);
+          };
+        }
+      } catch (e) {
+        statusEl.innerHTML = '<span class="err">✖ Error</span> ' + e.message;
+        outEl.hidden = true;
+      }
+    };
+  </script>
+</body>
+</html>
