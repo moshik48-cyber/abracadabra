@@ -1,110 +1,128 @@
-// Netlify Function: parse-spec
-export async function handler(event) {
-  // CORS בסיסי
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers };
+// netlify/functions/parse-spec.js
+import Ajv from "ajv";
+import addFormats from "ajv-formats";
+
+const ajv = new Ajv({ allErrors: true });
+addFormats(ajv);
+
+// סכמה פשוטה ל-"Spec" (דמו)
+const specSchema = {
+  type: "object",
+  properties: {
+    appName: { type: "string" },
+    entities: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          fields: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                type: { type: "string" }
+              },
+              required: ["name", "type"]
+            }
+          }
+        },
+        required: ["name", "fields"]
+      }
+    },
+    pages: { type: "array" }
+  },
+  required: ["appName", "entities"]
+};
+
+// “NL → Spec” דמו בסיסי מאוד (לוגיקה קצרה)
+function naiveNlToSpec(text) {
+  const t = (text || "").toLowerCase();
+  const isInvoices = t.includes("invoice") || t.includes("חשבונית");
+  const isTodo = t.includes("todo") || t.includes("משימות") || t.includes("לוח שנה");
+  const isCrm = t.includes("crm") || t.includes("לידים") || t.includes("לקוחות");
+
+  if (isInvoices) {
+    return {
+      appName: "Client & Invoice Tracker",
+      entities: [
+        { name: "Client", fields: [{ name: "name", type: "string" }, { name: "email", type: "string" }] },
+        { name: "Invoice", fields: [{ name: "clientId", type: "relation" }, { name: "amount", type: "number" }, { name: "status", type: "string" }] }
+      ],
+      pages: ["Clients", "Invoices", "Dashboard"]
+    };
   }
+  if (isTodo) {
+    return {
+      appName: "To-Do with Calendar",
+      entities: [
+        { name: "Task", fields: [{ name: "title", type: "string" }, { name: "due", type: "date" }, { name: "status", type: "string" }] }
+      ],
+      pages: ["Tasks", "Calendar"]
+    };
+  }
+  if (isCrm) {
+    return {
+      appName: "Simple CRM for Leads",
+      entities: [
+        { name: "Lead", fields: [{ name: "name", type: "string" }, { name: "source", type: "string" }, { name: "stage", type: "string" }] }
+      ],
+      pages: ["Leads", "Pipeline"]
+    };
+  }
+  // ברירת מחדל
+  return {
+    appName: "Generic App",
+    entities: [
+      { name: "Item", fields: [{ name: "title", type: "string" }, { name: "notes", type: "text" }] }
+    ],
+    pages: ["Home"]
+  };
+}
 
+export default async (req, context) => {
   try {
-    const body = JSON.parse(event.body || '{}');
-    const text = (body.text || '').toLowerCase();
-    const action = body.action || 'spec';
+    if (req.method !== "POST") {
+      return new Response(JSON.stringify({ ok: true, health: "ok" }), {
+        headers: { "content-type": "application/json" }
+      });
+    }
+    const body = await req.json().catch(() => ({}));
+    const { text, preset } = body || {};
 
-    // "NL→Spec" דמו פשטני
-    const entities = [];
-    if (text.includes('invoice') || text.includes('client')) {
-      entities.push(
-        { name: 'clients', fields: [
-          { name:'name', type:'string' },
-          { name:'email', type:'string' },
-          { name:'phone', type:'string' }
-        ]},
-        { name: 'invoices', fields: [
-          { name:'clientId', type:'ref:clients' },
-          { name:'total', type:'number' },
-          { name:'status', type:'enum:Draft,Paid,Overdue' },
-          { name:'issuedAt', type:'date' }
-        ]},
-        { name: 'payments', fields: [
-          { name:'invoiceId', type:'ref:invoices' },
-          { name:'amount', type:'number' },
-          { name:'paidAt', type:'date' }
-        ]}
-      );
-    } else if (text.includes('todo') || text.includes('task')) {
-      entities.push(
-        { name:'tasks', fields:[
-          { name:'title', type:'string' },
-          { name:'due', type:'date' },
-          { name:'status', type:'enum:Open,Done' }
-        ]}
-      );
-    } else {
-      entities.push(
-        { name:'items', fields:[
-          { name:'title', type:'string' },
-          { name:'status', type:'string' }
-        ]}
-      );
+    // תמיכה ב־presets מהכפתורים
+    let spec;
+    if (preset === "invoice") spec = naiveNlToSpec("invoice");
+    else if (preset === "todo") spec = naiveNlToSpec("todo");
+    else if (preset === "crm") spec = naiveNlToSpec("crm");
+    else spec = naiveNlToSpec(text || "");
+
+    // ולידציה
+    const validate = ajv.compile(specSchema);
+    if (!validate(spec)) {
+      return new Response(JSON.stringify({ error: "Invalid spec", details: validate.errors }), {
+        status: 400, headers: { "content-type": "application/json" }
+      });
     }
 
-    const spec = {
-      app: 'Abracadabra Demo',
-      language: 'en',        // ברירת מחדל אנגלית
-      entities
+    // דמו: החזרת sampleData עבור Preview
+    const sampleData = {
+      Client: [{ name: "Alice", email: "alice@ex.com" }, { name: "Bob", email: "bob@ex.com" }],
+      Invoice: [{ clientId: 1, amount: 1200, status: "Sent" }, { clientId: 2, amount: 800, status: "Paid" }],
+      Task: [{ title: "Send quote", due: "2025-08-20", status: "Open" }],
+      Lead: [{ name: "Acme", source: "Website", stage: "New" }]
     };
 
-    // דמו-פריוויו (טבלה + "גרף" טקסטואלי)
-    const preview = {
-      tableRows: demoRows(entities[0]?.name),
-      chart: [
-        { label: 'Draft', value: 3 },
-        { label: 'Paid', value: 6 },
-        { label: 'Overdue', value: 2 }
-      ]
-    };
-
-    const payload = (action === 'preview')
-      ? { ok:true, spec, preview }
-      : { ok:true, spec };
-
-    return {
-      statusCode: 200,
-      headers: { ...headers, 'Content-Type':'application/json' },
-      body: JSON.stringify(payload)
-    };
-
+    return new Response(JSON.stringify({ spec, sampleData }), {
+      headers: {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*"
+      }
+    });
   } catch (e) {
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ ok:false, error: e.message })
-    };
+    return new Response(JSON.stringify({ error: e.message || "Server error" }), {
+      status: 500, headers: { "content-type": "application/json" }
+    });
   }
-}
-
-function demoRows(kind='items'){
-  if (kind === 'clients') {
-    return [
-      { name:'Acme Ltd', status:'Active', total:'$12,300' },
-      { name:'Globex', status:'Active', total:'$5,100' },
-      { name:'Initech', status:'On Hold', total:'$800' },
-    ];
-  }
-  if (kind === 'tasks') {
-    return [
-      { name:'Draft proposal', status:'Open' },
-      { name:'Email client', status:'Done' },
-      { name:'Schedule meeting', status:'Open' },
-    ];
-  }
-  return [
-      { name:'Sample A', status:'Draft' },
-      { name:'Sample B', status:'Paid' },
-      { name:'Sample C', status:'Overdue' },
-  ];
-}
+};
