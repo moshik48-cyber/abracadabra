@@ -1,0 +1,13 @@
+[build]
+  command = ""
+  publish = "public"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# SPA fallback (לא חובה, אבל שימושי אם נרצה ראוטינג צד־לקוח)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
